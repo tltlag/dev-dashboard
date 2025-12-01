@@ -1,0 +1,93 @@
+<div class="col-md-12 d-flex gap-1 justify-content-lg-between">
+    <h4 class="m-0">{{__('Company Information')}}</h4>
+    <button type="button" class="btn btn-secondary" onclick="closeCompanyForm(this)"
+        data-url="{{route('employee.contact.form.company.list')}}" title="{{__('Close Company')}}">
+        <i class="fas fa-times"></i> {{__('Close')}}
+    </button>
+</div>
+<div class="col-md-12" id="link_extra_fields">
+    <label for="search-ch-cmp" class="form-label">{{ __('Search CH') }}</label>
+    <div class="input-group">
+        <input type="text" id="search-ch-cmp" class="form-control" placeholder="{{__('Enter keywords')}}" />
+    </div>
+</div>
+<div class="col-md-6">
+    <label for="cmp_name" class="form-label">{{ __('Company Name') }}</label>
+    <input type="text" class="form-control" name="cmp_name" id="cmp_name" value="{{ old('cmp_name', '') }}" required />
+    @error('cmp_name')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>
+<div class="col-md-6">
+    <label for="cmp_email" class="form-label">{{ __('Email') }}</label>
+    <input type="email" class="form-control" name="cmp_email" id="cmp_email" value="{{ old('cmp_email', '') }}"
+        required />
+    @error('cmp_email')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>
+<div class="col-md-6">
+    <label for="cmp_phone" class="form-label">{{ __('Phone') }}</label>
+    <input type="text" class="form-control" name="cmp_phone" id="cmp_phone" value="{{ old('cmp_phone', '') }}" />
+    @error('cmp_phone')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+    @if ($errors->has('cmp_contact_method'))
+    <div class="text-danger">{{ $errors->first('cmp_contact_method') }}</div>
+    @endif
+</div>
+<div class="col-md-6">
+    <label for="cmp_mobile" class="form-label">{{ __('Mobile') }}</label>
+    <input type="text" class="form-control" name="cmp_mobile" id="cmp_mobile" value="{{ old('cmp_mobile', '') }}" />
+    @error('cmp_mobile')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+    @if ($errors->has('cmp_contact_method'))
+    <div class="text-danger">{{ $errors->first('cmp_contact_method') }}</div>
+    @endif
+</div>
+<div class="col-md-6">
+    <label for="cmp_fax" class="form-label">{{ __('Fax') }}</label>
+    <input type="text" class="form-control" name="cmp_fax" id="cmp_fax" value="{{ old('cmp_fax', '') }}" />
+    @error('cmp_fax')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+    @if ($errors->has('cmp_contact_method'))
+    <div class="text-danger">{{ $errors->first('cmp_contact_method') }}</div>
+    @endif
+</div>
+<div class="col-md-6">
+    <label for="cmp_address" class="form-label">{{ __('Street Address') }}</label>
+    <textarea class="form-control" name="cmp_address" id="cmp_address" required>{{ old('cmp_address', '') }}</textarea>
+    @error('cmp_address')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>
+<div class="col-md-6">
+    <label for="cmp_postal_code" class="form-label">{{ __('Postal Code') }}</label>
+    <input type="text" class="form-control" name="cmp_postal_code" id="cmp_postal_code"
+        value="{{ old('cmp_postal_code', '') }}" required />
+    @error('cmp_postal_code')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>
+<div class="col-md-6">
+    <label for="cmp_city" class="form-label">{{ __('City') }}</label>
+    <input type="text" class="form-control" name="cmp_city" id="cmp_city" value="{{ old('cmp_city', '') }}" required />
+    @error('cmp_city')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>
+<div class="col-md-6">
+    <label for="cmp_country" class="form-label">{{ __('Country') }}</label>
+    <select class="form-control select2" name="cmp_country" id="cmp_country" required>
+        @foreach (\App\Models\Country::all() as $country)
+        <option value="{{$country->bexio_country_id}}" @if(old('cmp_country',
+            \App\Models\Country::getDefaultCounry())==$country->bexio_country_id) selected @endif>{{ $country->name }}
+        </option>
+        @endforeach
+    </select>
+    @error('cmp_country')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>

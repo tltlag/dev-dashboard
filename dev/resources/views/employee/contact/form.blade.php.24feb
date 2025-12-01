@@ -1,0 +1,373 @@
+@extends('employee.layouts.dashboard')
+
+
+@php($cType = old('contact_type', ($record->contact_type ?:
+($chData ? \App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE :
+\App\Models\BexioEmployee::CONTACT_TYPE_COMPANY))))
+
+@php($recordId = old('id', $record->id))
+
+@section('title', ($title ?? null))
+
+@push('footer_scripts')
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script>
+$(document).ready(function() {
+    $('#search-ch').select2({
+        placeholder: 'Search for a contact',
+        ajax: {
+            url: '{{ route("employee.contact.searchch") }}',
+            dataType: 'json',
+            processResults: function(data) {
+                return {
+                    results: data.map(function(item) {
+                        return {
+                            id: item.name,
+                            text: item.name,
+                            additionalData: item
+                        };
+                    })
+                };
+            }
+        }
+    });
+
+    @if($cType == \App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE)
+        @if(old('company_id'))
+        cmpSelect2 = $('#companyDropdown').select2({
+            width: '90%',
+            ajax: {
+                url: ntAjaxUrls.cmpSearch,
+                dataType: 'json',
+                processResults: function(data) {
+                    return {
+                        results: data
+                    };
+                }
+            }
+        });
+        @elseif(old('cmp_name'))
+            cmpChSelect2 = $('#search-ch-cmp').select2({
+                placeholder: 'Search for a contact',
+                ajax: {
+                    url: ntAjaxUrls.empSearchCh,
+                    dataType: 'json',
+                    processResults: function (data) {
+                        return {
+                            results: data.map(function (item) {
+                                return {
+                                    id: item.name,
+                                    text: item.name,
+                                    additionalData: item
+                                };
+                            })
+                        };
+                    }
+                }
+            });
+        @endif
+    @endif
+
+    $(document).on('select2:select', '#search-ch', function(e) {
+        var data = e.params.data.additionalData;
+        $('#company_name').val(data.name);
+        $('#name_1').val(data.name);
+        $('#postal_code').val(data.zip);
+        $('#city').val(data.city);
+        $('#address').val(data.address);
+        $('#phone').val(data.phone);
+        $('#email').val(data.email);
+        $('#country').val(data.country);
+    });
+
+    $(document).on('select2:select', '#search-ch-emp', function(e) {
+        var data = e.params.data.additionalData;
+        $('#emp_name_1').val(data.name);
+
+        $('#emp_postal_code').val(data.zip);
+        $('#emp_city').val(data.city);
+        $('#emp_address').val(data.address);
+        $('#emp_phone').val(data.phone);
+        $('#emp_email').val(data.email);
+        $('#emp_country').val(data.country);
+    });
+
+    $(document).on('select2:select', '#search-ch-cmp', function(e) {
+        var data = e.params.data.additionalData;
+        $('#cmp_name').val(data.name);
+
+        $('#cmp_postal_code').val(data.zip);
+        $('#cmp_city').val(data.city);
+        $('#cmp_address').val(data.address);
+        $('#cmp_phone').val(data.phone);
+        $('#cmp_email').val(data.email);
+        $('#cmp_country').val(data.country);
+    });
+});
+</script>
+@endpush
+
+@section('content')
+
+<!-- ========== section start ========== -->
+<section class="section">
+    <div class="container-fluid">
+        <!-- ========== title-wrapper start ========== -->
+        <div class="title-wrapper pt-30">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <div class="title">
+                        <h2>{{$title}}</h2>
+                    </div>
+                </div>
+                <!-- end col -->
+                <div class="col-md-6">
+                    <div class="breadcrumb-wrapper">
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb">
+                                <li class="breadcrumb-item">
+                                    <a href="{{route('employee.dashboard')}}">{{__('Dashboard')}}</a>
+                                </li>
+                                <li class="breadcrumb-item">
+                                    <a href="{{route('employee.contacts')}}">{{__('Contacts')}}</a>
+                                </li>
+                                <li class="breadcrumb-item active" aria-current="page">
+                                    {{$title}}
+                                </li>
+                            </ol>
+                        </nav>
+                    </div>
+                </div>
+                <!-- end col -->
+            </div>
+            <!-- end row -->
+        </div>
+        <!-- ========== title-wrapper end ========== -->
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card-style settings-card-2 mb-30">
+                    @if ($errors->has('general'))
+                    <div class="text-danger">{{ $errors->first('general') }}</div>
+                    @endif
+
+                    <form action="{{ route('employee.contact.store', [$record]) }}" method="POST">
+                        @csrf
+                        <div class="row g-3">
+                            @if (isset($isEditPage) && $isEditPage === true)
+                            <input type="hidden" name="contact_type" value="{{$record->contact_type}}" />
+                            <div class="col-md-12">
+                                <strong>{{ __('Contact Type') }}:</strong>
+                                {{\App\Models\BexioEmployee::getContactType($cType)}}
+                            </div>
+                            @else
+                            <div class="col-md-6">
+                                <label class="form-label">{{ __('Contact Type') }}</label>
+                                <div>
+                                    @foreach (\App\Models\BexioEmployee::getContactTypeList() as $key => $contactType)
+                                    <label>
+                                        <input type="radio" class="contact-type" name="contact_type" value="{{ $key }}"
+                                            @if($cType==$key) checked @endif />
+                                        {{ $contactType }}
+                                    </label>
+                                    @endforeach
+                                </div>
+                                @error('contact_type')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label for="search-ch" class="form-label">{{ __('Search CH') }}</label>
+                                <div class="input-group">
+                                    <input type="text" id="search-ch" class="form-control mr-5"
+                                        placeholder="{{__('Enter keywords')}}" />
+                                </div>
+                            </div>
+                            @endif
+                            <div
+                                class="col-md-6 ct-flds ct-{{\App\Models\BexioEmployee::CONTACT_TYPE_COMPANY}}-fld{{($cType != \App\Models\BexioEmployee::CONTACT_TYPE_COMPANY ? ' d-none' : '')}}">
+                                <label for="company_name" class="form-label">{{ __('Company Name') }}</label>
+                                <input type="text" class="form-control" name="company_name" id="company_name"
+                                    value="{{ old('company_name', $record->name) }}"
+                                    {{($cType == \App\Models\BexioEmployee::CONTACT_TYPE_COMPANY ? ' required' : '')}} />
+                                @error('company_name')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <div
+                                class="col-md-6 ct-flds ct-{{\App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE}}-fld{{($cType != \App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE ? ' d-none' : '')}}">
+                                <label for="name_2" class="form-label">{{ __('Last Name') }}</label>
+                                <input type="text" class="form-control" name="nt_name_2" id="name_2"
+                                    value="{{ old('nt_name_2', $record->last_name) }}"
+                                    {{($cType == \App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE ? ' required' : '')}} />
+                                @error('nt_name_2')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div
+                                class="col-md-6 ct-flds ct-{{\App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE}}-fld{{($cType != \App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE ? ' d-none' : '')}}">
+                                <label for="name_1" class="form-label">{{ __('First Name') }}</label>
+                                <input type="text" class="form-control" name="nt_name_1" id="name_1"
+                                    value="{{ old('nt_name_1', ($chData['name'] ?? $record->first_name)) }}"
+                                    {{($cType == \App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE ? ' required' : '')}} />
+                                @error('nt_name_1')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label for="email" class="form-label">{{ __('Email') }}</label>
+                                <input type="email" class="form-control" name="nt_email" id="email"
+                                    value="{{ old('nt_email', ($chData['email'] ?? $record->email)) }}" required />
+                                @error('nt_email')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label for="phone" class="form-label">{{ __('Phone') }}</label>
+                                <input type="text" class="form-control" name="nt_phone" id="phone"
+                                    value="{{ old('nt_phone', ($chData['phone'] ?? $record->phone_number)) }}" />
+                                @error('nt_phone')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                                @if ($errors->has('contact_method'))
+                                <div class="text-danger">{{ $errors->first('contact_method') }}</div>
+                                @endif
+                            </div>
+                            <div class="col-md-6">
+                                <label for="mobile" class="form-label">{{ __('Mobile') }}</label>
+                                <input type="text" class="form-control" name="nt_mobile" id="mobile"
+                                    value="{{ old('nt_mobile', $record->mobile_number) }}" />
+                                @error('nt_mobile')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                                @if ($errors->has('contact_method'))
+                                <div class="text-danger">{{ $errors->first('contact_method') }}</div>
+                                @endif
+                            </div>
+                            <div class="col-md-6">
+                                <label for="fax" class="form-label">{{ __('Fax') }}</label>
+                                <input type="text" class="form-control" name="nt_fax" id="fax"
+                                    value="{{ old('nt_fax', $record->fax_number) }}" />
+                                @error('nt_fax')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                                @if ($errors->has('contact_method'))
+                                <div class="text-danger">{{ $errors->first('contact_method') }}</div>
+                                @endif
+                            </div>
+                            <div class="col-md-6">
+                                <label for="address" class="form-label">{{ __('Street Address') }}</label>
+                                <textarea class="form-control" name="nt_address" id="address"
+                                    {{($cType == \App\Models\BexioEmployee::CONTACT_TYPE_COMPANY ? ' required' : '')}}>{{ old('nt_address', ($chData['address'] ?? $record->address)) }}</textarea>
+                                @error('nt_address')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label for="postal_code" class="form-label">{{ __('Postal Code') }}</label>
+                                <input type="text" class="form-control" name="nt_postal_code" id="postal_code"
+                                    value="{{ old('nt_postal_code', ($chData['zip'] ?? $record->postal_code)) }}"
+                                    {{($cType == \App\Models\BexioEmployee::CONTACT_TYPE_COMPANY ? ' required' : '')}} />
+                                @error('nt_postal_code')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                            </div>
+                            <div class="col-md-6">
+                                <label for="city" class="form-label">{{ __('City') }}</label>
+                                <input type="text" class="form-control" name="nt_city" id="city"
+                                    value="{{ old('nt_city', ($chData['city'] ?? $record->city)) }}"
+                                    {{($cType == \App\Models\BexioEmployee::CONTACT_TYPE_COMPANY ? ' required' : '')}} />
+                                @error('nt_city')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="country" class="form-label">{{ __('Country') }}</label>
+                                <select class="form-control" name="nt_country" id="country" required>
+                                    @foreach (\App\Models\Country::get() as $country)
+                                    <option value="{{$country->bexio_country_id}}" @if(old('nt_country',
+                                        ($chData['country'] ?? ($record->bexio_country_id ? $record->bexio_country_id :
+                                        \App\Models\Country::getDefaultCounry()))) == $country->bexio_country_id)
+                                        selected @endif>{{ $country->name }}</option>
+                                    @endforeach
+                                </select>
+                                @error('nt_country')
+                                <div class="text-danger">{{ $message }}</div>
+                                @enderror
+                            </div>
+                        </div>
+
+                        <div
+                            class="row mt-4 p-1 py-3 border border-1 ct-flds ct-{{\App\Models\BexioEmployee::CONTACT_TYPE_COMPANY}}-fld {{($cType != \App\Models\BexioEmployee::CONTACT_TYPE_COMPANY ? ' d-none' : '')}}">
+                            <div class="btn-wrp">
+                                @php($linkContactNoneClass = '')
+                                @php($cancelLinkContactNoneClass = 'd-none')
+
+                                @if ($cType == \App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE)
+                                    @if (old('company_id'))
+                                        @php($linkContactNoneClass = 'd-none')
+                                        @php($cancelLinkContactNoneClass = '')
+                                    @elseif (old('cmp_name'))
+                                        @php($linkContactNoneClass = 'd-none')
+                                        @php($cancelLinkContactNoneClass = '')
+                                    @endif
+                                @endif
+                                <a href="javascript:void(0);"
+                                    class="btn btn-primary link_contact w-auto {{$linkContactNoneClass}}">{{__('Link Employee')}}</a>
+                                <a href="javascript:void(0);"
+                                    class="btn btn-secondary {{$cancelLinkContactNoneClass}} cancel_link_contact w-auto">{{__('Cancel Link Employee')}}</a>
+                            </div>
+                            <div class="row g-3 cte-form" data-url="{{route('employee.contact.form.employee')}}">
+                                @if ($cType == \App\Models\BexioEmployee::CONTACT_TYPE_COMPANY && old('emp_name_1'))
+                                    @include('employee.contact.employee-template')
+                                @endif
+                            </div>
+                        </div>
+
+                        <div
+                            class="row mt-4 p-1 py-3 border border-1 ct-flds ct-{{\App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE}}-fld {{($cType != \App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE ? ' d-none' : '')}}">
+                            <div class="btn-wrp">
+                                @php($linkContactNoneClass = '')
+                                @php($cancelLinkContactNoneClass = 'd-none')
+
+                                @if ($cType == \App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE)
+                                    @if (old('company_id'))
+                                        @php($linkContactNoneClass = 'd-none')
+                                        @php($cancelLinkContactNoneClass = '')
+                                    @elseif (old('cmp_name'))
+                                        @php($linkContactNoneClass = 'd-none')
+                                        @php($cancelLinkContactNoneClass = '')
+                                    @endif
+                                @endif
+                                <a href="javascript:void(0);"
+                                    class="btn btn-primary link_contact w-auto {{$linkContactNoneClass}}">{{__('Link Company')}}</a>
+                                <a href="javascript:void(0);"
+                                    class="btn btn-secondary {{$cancelLinkContactNoneClass}} cancel_link_contact w-auto">{{__('Cancel Link Company')}}</a>
+                            </div>
+                            <div class="row g-3 cte-form" data-url="{{route('employee.contact.form.company.list')}}">
+                                @if ($cType == \App\Models\BexioEmployee::CONTACT_TYPE_EMPLOYEE)
+                                    @if (old('company_id'))
+                                        @include('employee.contact.company-list-template', ['bexioEmployeeCompany' => $bexioEmployeeCompany])
+                                    @elseif (old('cmp_name'))
+                                        @include('employee.contact.company-template')
+                                    @endif
+                                @endif
+                            </div>
+                        </div>
+
+                        <div class="mt-3">
+                            <input type="hidden" name="linked_account" value="{{ old('linked_account') ?? 0 }}"
+                                id="linked_account" />
+                            <a href="{{route('employee.contacts')}}" class="btn btn-secondary">{{ __('Back') }}</a>
+                            <button type="submit" class="btn btn-primary"
+                                style="float: right;">{{ __('Submit') }}</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+@endsection

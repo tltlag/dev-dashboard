@@ -1,0 +1,797 @@
+<?php
+
+namespace App\Http\Controllers\Employee;
+
+use Carbon\Carbon;
+use Illuminate\View\View;
+use Illuminate\Http\Request;
+use App\Models\BexioEmployee;
+use App\Services\BexioService;
+use App\Services\ClockodoService;
+use App\Services\SearchChService;
+use Illuminate\Http\RedirectResponse;
+use App\Models\BexioEmployeeHasCompany;
+use Symfony\Component\HttpFoundation\Response;
+use App\Http\Controllers\Employee\EmployeeBaseController;
+
+class ContactController extends EmployeeBaseController
+{
+    public function index(): view | RedirectResponse
+    {
+        return view(
+            'employee.contact.index',
+            [
+                'title' => __('Contacts'),
+            ]
+        );
+    }
+
+    public function list(Request $request)
+    {
+        $employee = auth('employee')->user();
+        $start = $request->get('start', 0);
+        $length = $request->get('length', 20);
+        $draw = $request->get('draw');
+        $keywords = $request->get('keywords', null);
+        $contactType = $request->get('contact_type', null);
+        $order = $request->get('order');
+        $orderBy = $order[0] ?? [];
+        $key = ['id', 'name'];
+
+        $model = BexioEmployee::orderBy(($key[($orderBy['column'] ?? 0)] ?? 'id'), ($orderBy['dir'] ?? 'id'));
+        $totalRecords = $model->count();
+
+        if ($keywords) {
+            $model->where(function ($query) use ($keywords) {
+                $query->where('name', 'like', "%" . $keywords . "%");
+                $query->orWhere('phone_number', 'like', "%$keywords%");
+                $query->orWhere('mobile_number', 'like', "%$keywords%");
+                $query->orWhere('fax_number', 'like', "%$keywords%");
+            });
+        }
+
+        if ($contactType) {
+            $model->where('contact_type', '=', $contactType);
+        }
+
+        $displayRecords = $model->count();
+        $model
+            ->limit($length)
+            ->offset($start);
+        $records = $model->get();
+
+        if ($records->count() <= 0) {
+            return response()->json([
+                'draw' => intval($draw),
+                'iTotalRecords' => 0,
+                'iTotalDisplayRecords' => 0,
+                'aaData' => null
+            ], Response::HTTP_OK);
+        }
+
+        $contacts = [];
+
+        foreach ($records as $record) {
+            $r = $record->toArray();
+            $r['type'] = BexioEmployee::getContactType($r['contact_type']);
+
+            if (! $record['mobile_number']) {
+                $r['mobile_number'] = __('--NA--');
+            }
+
+            if (! $record['phone_number']) {
+                $r['phone_number'] = __('--NA--');
+            }
+
+            if (! $record['fax_number']) {
+                $r['fax_number'] = __('--NA--');
+            }
+
+            $r['action'] = '<a href="' . route('employee.contact.edit', [$record]) . '"
+            class="btn btn-primary m-2" title="' . __('Edit') . '">
+            <i class="fa fa-edit"></i></a>
+            <a href="' . route('employee.contact.assign', [$record]) . '"
+            class="btn btn-warning   m-2" title="' . __('Assign') . '">
+            <i class="fa fa-list"></i></a>
+            <a href="' . route('employee.contact.delete', [$record]) . '" class="btn btn-danger   m-2"
+            onclick="return confirm(\'' . __('Are you sure?') . '\');" title="' . __('Delete') . '">
+            <i class="lni lni-trash-can"></i></a>';
+            $contacts[] = $r;
+        }
+
+        return response()->json([
+            'draw' => intval($draw),
+            'iTotalRecords' => $totalRecords,
+            'iTotalDisplayRecords' => $displayRecords,
+            'aaData' => $contacts,
+        ], Response::HTTP_OK);
+    }
+
+    public function form(
+        BexioEmployee $bexioEmployee,
+        ClockodoService $clockodoService,
+        Request $request
+    ): View | RedirectResponse {
+        $chData = $request->get('ch', null);
+        $phData = $request->get('ph', null);
+
+        if ($chData) {
+            $chData = json_decode(base64_decode($chData), true);
+        }
+
+        if ($phData) {
+            $chData['phone'] = json_decode(base64_decode($phData), true);
+        }
+
+        $bexioEmployeeCompany = $request->old('company_id') ? BexioEmployee::find($request->old('company_id')) : null;
+
+        return view(
+            'employee.contact.form',
+            [
+                'title' => !$bexioEmployee->id ? __('Add New Contact') :
+                __('Edit :company: :name', [
+                    'name' => $bexioEmployee->name,
+                    'company' => BexioEmployee::getContactType($bexioEmployee->contact_type)
+                ]),
+                'record' => $bexioEmployee,
+                'isEditPage' => $bexioEmployee->id ? true : false,
+                'chData' => $chData,
+                'bexioEmployeeCompany' => $bexioEmployeeCompany,
+            ]
+        );
+    }
+
+    public function store(
+        Request $request,
+        BexioEmployee $bexioEmployee,
+        BexioService $bexioService,
+        ClockodoService $clockodoService
+    ): RedirectResponse {
+        $rules = [
+            'contact_type' => 'required|string|in:' .
+            implode(',', array_keys(\App\Models\BexioEmployee::getContactTypeList())),
+
+            'company_name' => 'required_if:contact_type,' .
+            BexioEmployee::CONTACT_TYPE_COMPANY . '|nullable|string|max:255',
+            'nt_name_1' => 'required_if:contact_type,' .
+            BexioEmployee::CONTACT_TYPE_EMPLOYEE . '|nullable|string|max:255',
+            'nt_name_2' => 'required_if:contact_type,' .
+            BexioEmployee::CONTACT_TYPE_EMPLOYEE . '|nullable|string|max:255',
+
+            'nt_email' => 'required|email|max:255',
+
+            'nt_phone' => 'required_without_all:nt_mobile,nt_fax|nullable|string|max:20',
+            'nt_mobile' => 'required_without_all:nt_phone,nt_fax|nullable|string|max:20',
+            'nt_fax' => 'required_without_all:nt_phone,nt_mobile|nullable|string|max:20',
+
+           // 'nt_address' => 'required|string',
+            //'nt_city' => 'required|string|max:255',
+            'nt_country' => 'required|integer|exists:countries,bexio_country_id',
+            //'nt_postal_code' => 'required|string|max:20',
+        ];
+
+        $messages = [
+            'contact_type.required' => __('Contact type is required.'),
+            'contact_type.in' => __('Invalid contact type.'),
+            'company_name.required_if' => __('Company name is required.'),
+            'company_name.string' => __('Company name must be a string.'),
+            'company_name.max' => __('Company name must not be greater than 255 characters.'),
+            'nt_name_1.required_if' => __('First name is required.'),
+            'nt_name_1.string' => __('First name must be a string.'),
+            'nt_name_1.max' => __('First name must not be greater than 255 characters.'),
+            'nt_name_2.required_if' => __('Last name is required.'),
+            'nt_name_2.string' => __('Last name must be a string.'),
+            'nt_name_2.max' => __('Last name must not be greater than 255 characters.'),
+            'nt_email.required' => __('Email is required.'),
+            'nt_email.email' => __('Email must be a valid email address.'),
+            'nt_email.max' => __('Email must not be greater than 255 characters.'),
+            'nt_phone.string' => __('Phone must be a string.'),
+            'nt_phone.max' => __('Phone must not be greater than 20 characters.'),
+            'nt_mobile.string' => __('Mobile must be a string.'),
+            'nt_mobile.max' => __('Mobile must not be greater than 20 characters.'),
+            'nt_fax.string' => __('Fax must be a string.'),
+            'nt_fax.max' => __('Fax must not be greater than 20 characters.'),
+           // 'nt_address.required' => __('Address is required.'),
+           // 'nt_address.string' => __('Address must be a string.'),
+            //'nt_city.required' => __('City is required.'),
+           // 'nt_city.string' => __('City must be a string.'),
+           // 'nt_city.max' => __('City must not be greater than 255 characters.'),
+            'nt_country.required' => __('Country is required.'),
+            'nt_country.integer' => __('Country must be an integer.'),
+            'nt_country.exists' => __('Country does not exist.'),
+           // 'nt_postal_code.required' => __('Postal code is required.'),
+            //'nt_postal_code.string' => __('Postal code must be a string.'),
+           // 'nt_postal_code.max' => __('Postal code must not be greater than 20 characters.'),
+            'nt_phone.required_without_all' => __('Phone is required when mobile and fax are not present.'),
+            'nt_mobile.required_without_all' => __('Mobile is required when phone and fax are not present.'),
+            'nt_fax.required_without_all' => __('Fax is required when phone and mobile are not present.'),
+        ];
+
+        if (
+            $request->linked_account == 1 &&
+            ! (
+                $request->contact_type == BexioEmployee::CONTACT_TYPE_EMPLOYEE &&
+                $request->company_id
+            )
+        ) {
+            $extendedRules = [];
+
+            if ($request->contact_type == BexioEmployee::CONTACT_TYPE_COMPANY) {
+                $extendedRules = [
+                    'emp_name_1' => 'required|string|max:255',
+                    'emp_name_2' => 'required|string|max:255',
+                    'emp_email' => 'required|email|max:255',
+                    'emp_phone' => 'required_without_all:emp_mobile,emp_fax|nullable|string|max:20',
+                    'emp_mobile' => 'required_without_all:emp_phone,emp_fax|nullable|string|max:20',
+                    'emp_fax' => 'required_without_all:emp_phone,emp_mobile|nullable|string|max:20',
+                    //'emp_address' => 'nullable|string',
+                    //'emp_postal_code' => 'nullable|string|max:20',
+                   // 'emp_city' => 'nullable|string|max:255',
+                    'emp_country' => 'required|integer|exists:countries,bexio_country_id',
+                ];
+
+                $messages = array_merge($messages, [
+                    'emp_name_1.required' => __('First name is required.'),
+                    'emp_name_1.string' => __('First name must be a string.'),
+                    'emp_name_1.max' => __('First name must not be greater than 255 characters.'),
+                    'emp_name_2.required' => __('Last name is required.'),
+                    'emp_name_2.string' => __('Last name must be a string.'),
+                    'emp_name_2.max' => __('Last name must not be greater than 255 characters.'),
+                    'emp_email.required' => __('Email is required.'),
+                    'emp_email.email' => __('Email must be a valid email address.'),
+                    'emp_email.max' => __('Email must not be greater than 255 characters.'),
+                    'emp_phone.required' => __('Phone is required.'),
+                    'emp_phone.string' => __('Phone must be a string.'),
+                    'emp_phone.max' => __('Phone must not be greater than 20 characters.'),
+                    'emp_mobile.required' => __('Mobile is required.'),
+                    'emp_mobile.string' => __('Mobile must be a string.'),
+                    'emp_mobile.max' => __('Mobile must not be greater than 20 characters.'),
+                    'emp_fax.required' => __('Fax is required.'),
+                    'emp_fax.string' => __('Fax must be a string.'),
+                    'emp_fax.max' => __('Fax must not be greater than 20 characters.'),
+                   // 'emp_address.string' => __('Address must be a string.'),
+                   // 'emp_postal_code.string' => __('Postal code must be a string.'),
+                   // 'emp_postal_code.max' => __('Postal code must not be greater than 20 characters.'),
+                   // 'emp_city.string' => __('City must be a string.'),
+                   // 'emp_city.max' => __('City must not be greater than 255 characters.'),
+                    'emp_country.required' => __('Country is required.'),
+                    'emp_country.integer' => __('Country must be an integer.'),
+                    'emp_country.exists' => __('Country does not exist.'),
+                    'emp_phone.required_without_all' => __('Phone is required when mobile and fax are not present.'),
+                    'emp_mobile.required_without_all' => __('Mobile is required when phone and fax are not present.'),
+                    'emp_fax.required_without_all' => __('Fax is required when phone and mobile are not present.'),
+                ]);
+            } elseif ($request->contact_type == BexioEmployee::CONTACT_TYPE_EMPLOYEE) {
+                $extendedRules = [
+                    'cmp_name' => 'required|string|max:255',
+                   // 'cmp_address' => 'nullable|string',
+                    'cmp_email' => 'required|email|max:255',
+                    'cmp_phone' => 'required_without_all:cmp_mobile,cmp_fax|nullable|string|max:20',
+                    'cmp_mobile' => 'required_without_all:cmp_phone,cmp_fax|nullable|string|max:20',
+                    'cmp_fax' => 'required_without_all:cmp_phone,cmp_mobile|nullable|string|max:20',
+                  //  'cmp_postal_code' => 'nullable|string|max:20',
+                   // 'cmp_city' => 'nullable|string|max:255',
+                    'cmp_country' => 'required|integer|exists:countries,bexio_country_id',
+                ];
+
+                $messages = array_merge($messages, [
+                    'cmp_name.required' => __('Company name is required.'),
+                    'cmp_name.string' => __('Company name must be a string.'),
+                    'cmp_name.max' => __('Company name must not be greater than 255 characters.'),
+                  //  'cmp_address.string' => __('Address must be a string.'),
+                    'cmp_email.required' => __('Email is required.'),
+                    'cmp_email.email' => __('Email must be a valid email address.'),
+                    'cmp_email.max' => __('Email must not be greater than 255 characters.'),
+                    'cmp_phone.required' => __('Phone is required.'),
+                    'cmp_phone.string' => __('Phone must be a string.'),
+                    'cmp_phone.max' => __('Phone must not be greater than 20 characters.'),
+                    'cmp_mobile.required' => __('Mobile is required.'),
+                    'cmp_mobile.string' => __('Mobile must be a string.'),
+                    'cmp_mobile.max' => __('Mobile must not be greater than 20 characters.'),
+                    'cmp_fax.required' => __('Fax is required.'),
+                    'cmp_fax.string' => __('Fax must be a string.'),
+                    'cmp_fax.max' => __('Fax must not be greater than 20 characters.'),
+                  //  'cmp_postal_code.string' => __('Postal code must be a string.'),
+                 //   'cmp_postal_code.max' => __('Postal code must not be greater than 20 characters.'),
+                  //  'cmp_city.string' => __('City must be a string.'),
+                   // 'cmp_city.max' => __('City must not be greater than 255 characters.'),
+                    'cmp_country.required' => __('Country is required.'),
+                    'cmp_country.integer' => __('Country must be an integer.'),
+                    'cmp_country.exists' => __('Country does not exist.'),
+                    'cmp_phone.required_without_all' => __('Phone is required when mobile and fax are not present.'),
+                    'cmp_mobile.required_without_all' => __('Mobile is required when phone and fax are not present.'),
+                    'cmp_fax.required_without_all' => __('Fax is required when phone and mobile are not present.'),
+                ]);
+            }
+
+            $rules = array_merge($rules, $extendedRules);
+        }
+
+        $validated = $request->validate($rules, $messages);
+        $requestCompany = null;
+
+        if ($request->company_id) {
+            $requestCompany = BexioEmployee::where([
+                'id' => $request->company_id,
+                'contact_type' => BexioEmployee::CONTACT_TYPE_COMPANY,
+            ])->first();
+
+            if (! $requestCompany instanceof BexioEmployee) {
+                return redirect()->back()->withErrors([
+                    'company' =>
+                    __('Company not found.')
+                ])->withInput();
+            }
+        }
+
+        $owner = $bexioService->getOwner();
+
+        if (!$owner) {
+            return redirect()->back()->withErrors([
+                'general' => __('Bexio owner not found.')
+            ])->withInput();
+        }
+
+        $data = [
+            'contact_type_id' => $validated['contact_type'],
+            'name_1' => ($validated['contact_type'] == BexioEmployee::CONTACT_TYPE_COMPANY ?
+            $validated['company_name'] :
+            $validated['nt_name_1']),
+            'name_2' => ($validated['contact_type'] == BexioEmployee::CONTACT_TYPE_COMPANY ? '' :
+            $validated['nt_name_2']),
+            'phone_fixed' => $request->input('nt_phone'),
+            'phone_mobile' => $request->input('nt_mobile'),
+            'fax' => $request->input('nt_fax'),
+            'mail' => $request->input('nt_email'),
+            'address' => $request->input('nt_address')??'',
+            'postcode' => $validated['nt_postal_code']??'',
+            'city' =>  $validated['nt_city']??'',
+            'country_id' => $validated['nt_country'],
+            'user_id' => $owner['id'],
+            'owner_id' => $owner['id'],
+        ];
+
+        if ($bexioEmployee->emp_id) {
+            $data['contact_id'] = $bexioEmployee->emp_id;
+            $data['contact_type_id'] = $bexioEmployee->contact_type;
+        }
+
+        $contact = $bexioService->saveCustomer($data);
+
+        if (!$contact) {
+            return redirect()->back()->withErrors([
+                'general' => __('Unable to save contact.')
+            ])->withInput();
+        }
+
+        if ($request->linked_account == 1) {
+            if ($validated['contact_type'] == BexioEmployee::CONTACT_TYPE_COMPANY) {
+                $empData = [
+                    'contact_type_id' => 2,
+                    'name_1' =>  $validated['emp_name_1'],
+                    'name_2' => $validated['emp_name_2'],
+                    'phone_fixed' => $request->input('emp_phone'),
+                    'phone_mobile' => $request->input('emp_mobile'),
+                    'fax' => $request->input('emp_fax'),
+                    'mail' => $request->input('emp_email'),
+                    'address' => $request->input('emp_address')??'',
+                    'postcode' => $validated['emp_postal_code']??'',
+                    'city' =>  $validated['emp_city']??'',
+                    'country_id' => $validated['emp_country'],
+                    'user_id' => $owner['id'],
+                    'owner_id' => $owner['id'],
+                ];
+
+                $employee = $bexioService->saveCustomer($empData);
+
+                if (!$employee) {
+                    return redirect()->back()->withErrors([
+                        'general' => __('Unable to save employee.')
+                    ])->withInput();
+                }
+
+                $relationData = [
+                    'contact_id' => $contact['id'],
+                    "contact_sub_id" => $employee['id'],
+                    "description" => '',
+                ];
+                $relationResult = $bexioService->saveContactRelation($relationData);
+
+                if (!$relationResult) {
+                    return redirect()->back()->withErrors([
+                        'general' => __('Unable to save relation.')
+                    ])->withInput();
+                }
+
+                $data = [
+                    'bexio_employee_id' => $employee['id'],
+                    'bexio_company_id' => $contact['id'],
+                    'contact_relation_id' => $relationResult['id'],
+                ];
+
+                // make this update or create
+                BexioEmployeeHasCompany::updateOrCreate(
+                    [
+                        'bexio_employee_id' => $employee['id'],
+                        'bexio_company_id' => $contact['id']
+                    ],
+                    $data
+                );
+            } else {
+                if ($requestCompany instanceof BexioEmployee) {
+                    $relationData = [
+                        'contact_id' => $requestCompany->emp_id,
+                        "contact_sub_id" => $contact['id'],
+                        "description" => '',
+                    ];
+                    $relationResult = $bexioService->saveContactRelation($relationData);
+
+                    if (!$relationResult) {
+                        return redirect()->back()->withErrors([
+                            'general' => __('Unable to save relation.')
+                        ])->withInput();
+                    }
+
+                    $data = [
+                        'bexio_employee_id' => $contact['id'],
+                        'bexio_company_id' => $requestCompany->emp_id,
+                        'contact_relation_id' => $relationResult['id'],
+                    ];
+
+                    // make this update or create
+                    BexioEmployeeHasCompany::updateOrCreate(
+                        [
+                            'bexio_employee_id' => $contact['id'],
+                            'bexio_company_id' => $requestCompany->emp_id,
+                        ],
+                        $data
+                    );
+                } else {
+                    $cmpData = [
+                        'contact_type_id' => 1,
+                        'name_1' =>  $validated['cmp_name'],
+                        'phone_fixed' => $request->input('cmp_phone'),
+                        'phone_mobile' => $request->input('cmp_mobile'),
+                        'fax' => $request->input('cmp_fax'),
+                        'mail' => $request->input('cmp_email'),
+                        'address' => $request->input('cmp_address'),
+                        'postcode' => $validated['cmp_postal_code'],
+                        'city' =>  $validated['cmp_city'],
+                        'country_id' => $validated['cmp_country'],
+                        'user_id' => $owner['id'],
+                        'owner_id' => $owner['id'],
+                    ];
+
+                    $company = $bexioService->saveCustomer($cmpData);
+
+                    if (!$company) {
+                        return redirect()->back()->withErrors([
+                            'general' => __('Unable to save company.')
+                        ])->withInput();
+                    }
+
+                    $relationData = [
+                        'contact_id' => $company['id'],
+                        "contact_sub_id" => $contact['id'],
+                        "description" => '',
+                    ];
+                    $relationResult = $bexioService->saveContactRelation($relationData);
+
+                    if (!$relationResult) {
+                        return redirect()->back()->withErrors([
+                            'general' => __('Unable to save relation.')
+                        ])->withInput();
+                    }
+
+                    $data = [
+                        'bexio_employee_id' => $contact['id'],
+                        'bexio_company_id' => $company['id'],
+                        'contact_relation_id' => $relationResult['id'],
+                    ];
+
+                    // make this update or create
+                    BexioEmployeeHasCompany::updateOrCreate(
+                        [
+                            'bexio_employee_id' => $contact['id'],
+                            'bexio_company_id' => $company['id'],
+                        ],
+                        $data
+                    );
+                }
+            }
+        }
+
+        $name = ($validated['contact_type'] == BexioEmployee::CONTACT_TYPE_COMPANY ?
+        $request->input('company_name') :
+        trim($request->input('nt_name_1') . ' ' . $request->input('nt_name_2')));
+
+        if (!$bexioEmployee->clockodo_emp_id) {
+            if ($validated['contact_type'] == BexioEmployee::CONTACT_TYPE_COMPANY) {
+                $customers = $clockodoService->getCustomers();
+                $customers = $customers ? collect($customers)->pluck('name', 'id')->toArray() : [];
+
+                if ($clockoDoId = array_search($name, $customers)) {
+                    $bexioEmployee->clockodo_emp_id = $clockoDoId;
+                } else {
+                    $clockodoCustomer = $clockodoService->saveCustomer([
+                        'name' => $name,
+                    ]);
+
+                    if ($clockodoCustomer) {
+                        $bexioEmployee->clockodo_emp_id = $clockodoCustomer['id'];
+                    }
+                }
+            }
+        } else {
+            if ($validated['contact_type'] == BexioEmployee::CONTACT_TYPE_COMPANY) {
+                $clockodoCustomer = $clockodoService->saveCustomer([
+                    'id' => $bexioEmployee->clockodo_emp_id,
+                    'name' => $name,
+                ]);
+            }
+        }
+
+        $bexioEmployee->contact_type = !$bexioEmployee->id ? $validated['contact_type'] : $bexioEmployee->contact_type;
+        $bexioEmployee->name = $name;
+        $bexioEmployee->first_name = ($validated['contact_type'] == BexioEmployee::CONTACT_TYPE_COMPANY ?
+        $request->input('company_name') :
+        $request->input('nt_name_1'));
+        $bexioEmployee->last_name = ($validated['contact_type'] == BexioEmployee::CONTACT_TYPE_COMPANY ? '' :
+        $request->input('nt_name_2'));
+        $bexioEmployee->email = $request->input('nt_email');
+        $bexioEmployee->phone_number = $request->input('nt_phone');
+        $bexioEmployee->mobile_number = $request->input('nt_mobile');
+        $bexioEmployee->fax_number = $request->input('nt_fax');
+        $bexioEmployee->postal_code = $request->input('nt_postal_code');
+        $bexioEmployee->city = $request->input('nt_city');
+        $bexioEmployee->address = $request->input('nt_address');
+        $bexioEmployee->bexio_country_id = $request->input('nt_country');
+        $bexioEmployee->emp_id = $contact['id'];
+        $bexioEmployee->bexio_response = json_encode($contact);
+
+        // Save the record
+        $bexioEmployee->save();
+
+        if ($request->linked_account == 1 && $validated['contact_type'] == BexioEmployee::CONTACT_TYPE_COMPANY) {
+            $bexioEmployee1 = new BexioEmployee();
+            $bexioEmployee1->contact_type = 2;
+            $bexioEmployee1->name = trim($request->input('emp_name_1') . " " . $request->input('emp_name_2'));
+            $bexioEmployee1->first_name =  $request->input('emp_name_1');
+            $bexioEmployee1->last_name =  $request->input('emp_name_2');
+            $bexioEmployee1->email = $request->input('emp_email');
+            $bexioEmployee1->address = $request->input('emp_address');
+            $bexioEmployee1->phone_number = $request->input('emp_phone');
+            $bexioEmployee1->mobile_number = $request->input('emp_mobile');
+            $bexioEmployee1->fax_number = $request->input('emp_fax');
+            $bexioEmployee1->postal_code = $request->input('emp_postal_code');
+            $bexioEmployee1->city = $request->input('emp_city');
+            $bexioEmployee1->bexio_country_id = $request->input('emp_country');
+            $bexioEmployee1->emp_id = $employee['id'];
+            $bexioEmployee1->bexio_response = json_encode($employee);
+
+            // Save the record
+            $bexioEmployee1->save();
+        }
+
+        if (
+            $request->linked_account == 1 &&
+            $validated['contact_type'] == BexioEmployee::CONTACT_TYPE_EMPLOYEE &&
+            !$request->company_id
+        ) {
+            $bexioCompany = new BexioEmployee();
+            $bexioCompany->contact_type = 1;
+            $bexioCompany->name = $request->input('cmp_name');
+            $bexioCompany->email = $request->input('cmp_email');
+            $bexioCompany->address = $request->input('cmp_address');
+            $bexioCompany->phone_number = $request->input('cmp_phone');
+            $bexioCompany->mobile_number = $request->input('cmp_mobile');
+            $bexioCompany->fax_number = $request->input('cmp_fax');
+            $bexioCompany->postal_code = $request->input('cmp_postal_code');
+            $bexioCompany->city = $request->input('cmp_city');
+            $bexioCompany->bexio_country_id = $request->input('cmp_country');
+            $bexioCompany->emp_id = $company['id'];
+            $bexioCompany->bexio_response = json_encode($company);
+
+            // Save the record
+            $bexioCompany->save();
+        }
+
+        return redirect()
+        ->route('employee.contacts', [$bexioEmployee])
+        ->with('global_message', __('Contact information saved successfully.'));
+    }
+
+    public function searchch(Request $request, SearchChService $searchChService)
+    {
+        $phoneNumber = $request->get('q', '');
+
+        return $searchChService->getContacts((string) $phoneNumber);
+    }
+
+    public function assignPage(BexioEmployee $bexioEmployee): view | RedirectResponse
+    {
+        $contacts = $bexioEmployee->{($bexioEmployee->contact_type == BexioEmployee::CONTACT_TYPE_COMPANY) ?
+            'employees' :
+            'companies'};
+
+        return view(
+            'employee.contact.assign-page',
+            [
+                'title' => __(
+                    'Assign Contacts To :type: :name',
+                    [
+                        'type' => BexioEmployee::getContactType($bexioEmployee->contact_type),
+                        'name' => $bexioEmployee->name,
+                    ]
+                ),
+                'bexioEmployee' => $bexioEmployee,
+                'contacts' => $contacts,
+            ]
+        );
+    }
+
+    public function searchContacts(BexioEmployee $bexioEmployee, Request $request)
+    {
+        $keywords = $request->get('q', '');
+
+        $contactType = $bexioEmployee->contact_type == BexioEmployee::CONTACT_TYPE_COMPANY ?
+        BexioEmployee::CONTACT_TYPE_EMPLOYEE :
+        BexioEmployee::CONTACT_TYPE_COMPANY;
+        $contacts = $bexioEmployee->{($bexioEmployee->contact_type == BexioEmployee::CONTACT_TYPE_COMPANY) ?
+            'employees' : 'companies'};
+        $contactIds =  $contacts->pluck('id');
+
+        return BexioEmployee::where('contact_type', $contactType)
+            ->whereNotIn('id', $contactIds)
+            ->where(function ($query) use ($keywords) {
+                if ($keywords) {
+                    $query->where('name', 'like', "%$keywords%");
+                    $query->orWhere('phone_number', 'like', "%$keywords%");
+                    $query->orWhere('mobile_number', 'like', "%$keywords%");
+                    $query->orWhere('fax_number', 'like', "%$keywords%");
+                    $query->orWhere('email', 'like', "%$keywords%");
+                }
+            })
+            ->take(10)
+            ->get();
+    }
+
+    public function link(BexioService $bexioService, BexioEmployee $bexioEmployee, Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'ids' => 'required',
+        ], [
+            'ids.required' => __('Please select any one contact.'),
+        ]);
+
+        if ($bexioEmployee->contact_type == BexioEmployee::CONTACT_TYPE_COMPANY) {
+            foreach (explode(',', $request->get('ids', '')) as $relation) {
+                $data = [
+                    'bexio_employee_id' => $relation,
+                    'bexio_company_id' => $bexioEmployee->emp_id,
+                ];
+                //save relation on bexio
+                $relationData = [
+                    'contact_id' => $relation,
+                    "contact_sub_id" => $bexioEmployee->emp_id,
+                    "description" => '',
+                ];
+                $relationresult = $bexioService->saveContactRelation($relationData);
+
+                if (!BexioEmployeeHasCompany::where($data)->first()) {
+                    if ($relationresult) {
+                        $data['contact_relation_id'] = $relationresult['id'];
+                    }
+
+                    BexioEmployeeHasCompany::insert(
+                        array_merge(
+                            $data,
+                            [
+                                'created_at' => Carbon::now(),
+                                'updated_at' => Carbon::now(),
+                            ]
+                        )
+                    );
+                }
+            }
+        } else {
+            foreach (explode(',', $request->get('ids', '')) as $relation) {
+                $data = [
+                    'bexio_employee_id' => $bexioEmployee->emp_id,
+                    'bexio_company_id' => $relation,
+                ];
+                //save relation on bexio
+                $relationData = [
+                    'contact_id' => $bexioEmployee->emp_id,
+                    "contact_sub_id" => $relation,
+                    "description" => '',
+                ];
+                $relationresult = $bexioService->saveContactRelation($relationData);
+
+                if (!BexioEmployeeHasCompany::where($data)->first()) {
+                    if ($relationresult) {
+                        $data['contact_relation_id'] = $relationresult['id'];
+                    }
+                    BexioEmployeeHasCompany::insert(
+                        array_merge(
+                            $data,
+                            [
+                                'created_at' => Carbon::now(),
+                                'updated_at' => Carbon::now(),
+                            ]
+                        )
+                    );
+                }
+            }
+        }
+
+        return redirect()->back()->with('global_message', __('Contact successfully linked.'));
+    }
+
+    public function linkRemove($otherId, BexioEmployee $bexioEmployee, BexioService $bexioService): RedirectResponse
+    {
+
+        if ($bexioEmployee->contact_type == BexioEmployee::CONTACT_TYPE_COMPANY) {
+            $contactRelation = BexioEmployeeHasCompany::where([
+                'bexio_company_id' => $bexioEmployee->emp_id,
+                'bexio_employee_id' => $otherId,
+            ])->first();
+        } else {
+            $contactRelation =  BexioEmployeeHasCompany::where([
+                'bexio_employee_id' => $bexioEmployee->emp_id,
+                'bexio_company_id' => $otherId,
+            ])->first();
+        }
+        //remove relation from bexio
+        if (!$contactRelation instanceof BexioEmployeeHasCompany) {
+            return redirect()->back()->with('global_error', __('Relationship not found.'));
+        }
+        $relationData = ['contact_relation_id' => $contactRelation->contact_relation_id];
+        if (!$bexioService->removeContactRelation($relationData)) {
+            return redirect()->back()->with('global_error', __('Relationship not found.'));
+        }
+        $contactRelation->delete();
+
+
+        return redirect()->back()->with('global_message', __('Contact successfully un-linked.'));
+    }
+
+    public function deleteContact(BexioEmployee $bexioEmployee, BexioService $bexioService): RedirectResponse
+    {
+        if (! $bexioEmployee->emp_id) {
+            return redirect()->back()->with('global_error', __('Contact not found.'));
+        }
+
+        if (! $bexioService->removeContact($bexioEmployee->emp_id)) {
+            return redirect()->back()->with('global_error', __('Unable to delete contact, please try again later.'));
+        }
+
+        $bexioEmployee->delete();
+
+        return redirect()->back()->with('global_message', __('Contact successfully deleted.'));
+    }
+
+    public function getCompanies(Request $request)
+    {
+        $search = $request->input('term', '');
+        $companies = BexioEmployee::where('contact_type', BexioEmployee::CONTACT_TYPE_COMPANY)
+            ->where('name', 'LIKE', "%$search%")
+            ->get(['id', 'name as text']);
+        return response()->json($companies);
+    }
+
+    public function employeeForm(): View
+    {
+        return view('employee.contact.employee-template');
+    }
+
+    public function companyForm(): View
+    {
+        return view('employee.contact.company-template');
+    }
+
+    public function companyListForm(): View
+    {
+        return view('employee.contact.company-list-template');
+    }
+}

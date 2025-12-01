@@ -1,0 +1,97 @@
+<div class="col-md-12">
+    <h4 class="m-0">{{__('Employee Information')}}</h4>
+</div>
+<div class="col-md-12" id="link_extra_fields">
+    <label for="search-ch-emp" class="form-label">{{ __('Search CH') }}</label>
+    <div class="input-group">
+        <input type="text" id="search-ch-emp" class="form-control mr-5" placeholder="{{__('Enter keywords')}}" />
+    </div>
+</div>
+
+<div class="col-md-6 ">
+    <label for="emp_name_2" class="form-label">{{ __('Last Name') }}</label>
+    <input type="text" class="form-control" name="emp_name_2" id="emp_name_2" value="{{ old('emp_name_2', '') }}" required />
+    @error('emp_name_2')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>
+<div class="col-md-6">
+    <label for="emp_name_1" class="form-label">{{ __('First Name') }}</label>
+    <input type="text" class="form-control" name="emp_name_1" id="emp_name_1" value="{{ old('emp_name_1', '') }}" required />
+    @error('emp_name_1')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>
+<div class="col-md-6">
+    <label for="emp_email" class="form-label">{{ __('Email') }}</label>
+    <input type="email" class="form-control" name="emp_email" id="emp_email" value="{{ old('emp_email', '') }}" required />
+    @error('emp_email')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>
+<div class="col-md-6">
+    <label for="emp_phone" class="form-label">{{ __('Phone') }}</label>
+    <input type="text" class="form-control" name="emp_phone" id="emp_phone" value="{{ old('emp_phone', '') }}" />
+    @error('emp_phone')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+    @if ($errors->has('emp_contact_method'))
+    <div class="text-danger">{{ $errors->first('emp_contact_method') }}</div>
+    @endif
+</div>
+<div class="col-md-6">
+    <label for="emp_mobile" class="form-label">{{ __('Mobile') }}</label>
+    <input type="text" class="form-control" name="emp_mobile" id="emp_mobile" value="{{ old('emp_mobile', '') }}" />
+    @error('emp_mobile')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+    @if ($errors->has('emp_contact_method'))
+    <div class="text-danger">{{ $errors->first('emp_contact_method') }}</div>
+    @endif
+</div>
+<div class="col-md-6">
+    <label for="emp_fax" class="form-label">{{ __('Fax') }}</label>
+    <input type="text" class="form-control" name="emp_fax" id="fax" value="{{ old('emp_fax', '') }}" />
+    @error('emp_fax')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+    @if ($errors->has('emp_contact_method'))
+    <div class="text-danger">{{ $errors->first('emp_contact_method') }}</div>
+    @endif
+</div>
+<div class="col-md-6">
+    <label for="emp_address" class="form-label">{{ __('Street Address') }}</label>
+    <textarea class="form-control" name="emp_address" id="emp_address" >{{ old('emp_address', '') }}</textarea>
+    @error('emp_address')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>
+<div class="col-md-6">
+    <label for="emp_postal_code" class="form-label">{{ __('Postal Code') }}</label>
+    <input type="text" class="form-control" name="emp_postal_code" id="emp_postal_code"
+        value="{{ old('emp_postal_code', '') }}"  />
+    @error('emp_postal_code')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>
+<div class="col-md-6">
+    <label for="emp_city" class="form-label">{{ __('City') }}</label>
+    <input type="text" class="form-control" name="emp_city" id="emp_city" value="{{ old('emp_city', '') }}"  />
+    @error('emp_city')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>
+
+<div class="col-md-6">
+    <label for="emp_country" class="form-label">{{ __('Country') }}</label>
+    <select class="form-control" name="emp_country" id="emp_country" required>
+        @foreach (\App\Models\Country::all() as $country)
+        <option value="{{$country->bexio_country_id}}" @if(old('emp_country',
+            \App\Models\Country::getDefaultCounry())==$country->bexio_country_id) selected @endif>{{ $country->name }}
+        </option>
+        @endforeach
+    </select>
+    @error('emp_country')
+    <div class="text-danger">{{ $message }}</div>
+    @enderror
+</div>

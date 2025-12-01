@@ -1,0 +1,10 @@
+body .nt-form .error {
+    font-size: 15px!important;
+    color: var(--bs-red) !important;
+    width: 100%;
+    border: 1px solid var(--bs-red)
+}
+
+body .nt-form label.error {
+    border: none !important;
+}

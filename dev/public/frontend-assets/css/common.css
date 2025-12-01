@@ -1,0 +1,124 @@
+.rs-login .noticed .main-part .method-account .error,
+.nt-form .error {
+  border: 1px solid red;
+  color: red !important;
+}
+
+body form label.error {
+  border: none !important;
+  text-align: left !important;
+  width: 100% !important;
+  display: block !important;
+  line-height: 20px !important;
+  font-weight: normal !important;
+  margin-bottom: 10px !important;
+  margin-top: 10px !important;
+}
+
+.rs-login .noticed .main-part .last-password {
+  font-size: 15px;
+  line-height: 50px;
+  font-weight: 700;
+  color: #111111;
+}
+
+.styled-form .form-group .select2 {
+  padding: 6px;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+  top: 10px;
+}
+
+.breadcrumb-item.active,
+.nav-item.active,
+.breadcrumb-item:hover,
+.nav-item:hover {
+  color: #ff5421;
+}
+
+.hiddenhide .hidden {
+  display: none;
+}
+
+.remove-image {
+  display: none;
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  border-radius: 10em;
+  padding: 2px 6px 3px;
+  text-decoration: none;
+  font: 700 21px/20px sans-serif;
+  background: #555;
+  border: 3px solid #fff;
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .5), inset 0 2px 4px rgba(0, 0, 0, .3);
+}
+
+.t-t {
+  color: #FFFFFF;
+}
+
+.rs-testimonial.main-home .testi-item .author-desc .author-img img.t-img {
+  width: 70px;
+  height: auto;
+  max-width: 70px;
+  max-height: 70px;
+}
+
+.even td,
+.odd:not(:first-child) td {
+  border-top-width: 5px;
+}
+
+#list_length {
+  display: none !important;
+}
+
+.cdtl {
+  width: 40%;
+  display: inline-block;
+  text-align: right;
+  padding-right: 10px;
+}
+
+div#list_paginate {
+  display: inline-block;
+}
+
+.cdtl label {
+  display: flex;
+  gap: 15px;
+}
+
+
+.accordion {
+  --bs-accordion-bg: transparent;
+  --bs-accordion-active-bg: transparent;
+}
+
+#list.table tr,
+#list.table td {
+  padding: 5px;;
+}
+
+.select2 .selection {
+  display: block;
+}
+.select2-container--default .select2-selection--single .select2-selection__arrow{
+  top: 0px;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.entry-row{
+  border-left: 10px solid #397935 !important;
+  border-radius: 10px !important;
+}
+
+.fs-13 {
+  font-size: 13px;
+}
